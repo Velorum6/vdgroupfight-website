@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>VD Groupfight</title>
+        <link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="assets/img/favicon-16x16.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png" />
+        <link rel="shortcut icon" href="assets/img/favicon.ico" />
+        <!-- Open Graph / Facebook -->
+        <link rel="stylesheet" href="assets/css/bootstrap.min.css" />
+        <link rel="stylesheet" href="assets/css/main.css" />
+        <style>
+            th.sortable {
+                cursor: pointer;
+            }
+
+            th.sortable:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+            }
+
+            th.sortable::after {
+                content: '▼';
+                margin-left: 5px;
+                opacity: 0.5;
+            }
+
+            th.sortable.asc::after {
+                content: '▲';
+                opacity: 1;
+            }
+
+            th.sortable.desc::after {
+                content: '▼';
+                opacity: 1;
+            }
+        </style>
+    </head>
+    <body>
+        <nav class="navbar navbar-expand-lg navbar-dark fixed-top" aria-label="Navbar">
+            <div class="container">
+                <a class="navbar-brand" href="index.html">
+                    <img src="assets/img/logo.png" alt="Vestmar Dominion Logo" />
+                </a>
+                <div class="menu-icon">
+                    <input class="menu-icon-span" type="checkbox" id="menuToggle" />
+                    <div><span></span><span></span></div>
+                </div>
+                <div class="offcanvas offcanvas-top" tabindex="-1" id="navbar" aria-label="Navigation Menu">
+                    <div class="offcanvas-body">
+                        <ul class="navbar-nav justify-content-end flex-grow-1">
+                            <li class="nav-item">
+                                <a href="player_map.php" class="nav-link">Player Map</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://discord.gg/R5cK34QFRM" class="btn btn-discord me-2">
+                                    <svg class="nav-item-icon" viewBox="0 -28.5 256 256" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M216.856339,16.5966031 C200.285002,8.84328665 182.566144,3.2084988 164.041564,0 C161.766523,4.11318106 159.108624,9.64549908 157.276099,14.0464379 C137.583995,11.0849896 118.072967,11.0849896 98.7430163,14.0464379 C96.9108417,9.64549908 94.1925838,4.11318106 91.8971895,0 C73.3526068,3.2084988 55.6133949,8.86399117 39.0420583,16.6376612 C5.61752293,67.146514 -3.4433191,116.400813 1.08711069,164.955721 C23.2560196,181.510915 44.7403634,191.567697 65.8621325,198.148576 C71.0772151,190.971126 75.7283628,183.341335 79.7352139,175.300261 C72.104019,172.400575 64.7949724,168.822202 57.8887866,164.667963 C59.7209612,163.310589 61.5131304,161.891452 63.2445898,160.431257 C105.36741,180.133187 151.134928,180.133187 192.754523,160.431257 C194.506336,161.891452 196.298154,163.310589 198.110326,164.667963 C191.183787,168.842556 183.854737,172.420929 176.223542,175.320965 C180.230393,183.341335 184.861538,190.991831 190.096624,198.16893 C211.238746,191.588051 232.743023,181.531619 254.911949,164.955721 C260.227747,108.668201 245.831087,59.8662432 216.856339,16.5966031 Z" fill-rule="nonzero"></path>
+                                    </svg>
+                                    Groupfight Discord
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://discord.gg/vestmar-dominion" class="btn btn-discord">
+                                    <svg class="nav-item-icon" viewBox="0 -28.5 256 256" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M216.856339,16.5966031 C200.285002,8.84328665 182.566144,3.2084988 164.041564,0 C161.766523,4.11318106 159.108624,9.64549908 157.276099,14.0464379 C137.583995,11.0849896 118.072967,11.0849896 98.7430163,14.0464379 C96.9108417,9.64549908 94.1925838,4.11318106 91.8971895,0 C73.3526068,3.2084988 55.6133949,8.86399117 39.0420583,16.6376612 C5.61752293,67.146514 -3.4433191,116.400813 1.08711069,164.955721 C23.2560196,181.510915 44.7403634,191.567697 65.8621325,198.148576 C71.0772151,190.971126 75.7283628,183.341335 79.7352139,175.300261 C72.104019,172.400575 64.7949724,168.822202 57.8887866,164.667963 C59.7209612,163.310589 61.5131304,161.891452 63.2445898,160.431257 C105.36741,180.133187 151.134928,180.133187 192.754523,160.431257 C194.506336,161.891452 196.298154,163.310589 198.110326,164.667963 C191.183787,168.842556 183.854737,172.420929 176.223542,175.320965 C180.230393,183.341335 184.861538,190.991831 190.096624,198.16893 C211.238746,191.588051 232.743023,181.531619 254.911949,164.955721 C260.227747,108.668201 245.831087,59.8662432 216.856339,16.5966031 Z" fill-rule="nonzero"></path>
+                                    </svg>
+                                    Vestmar Dominion
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <div class="status position-relative">
+            <div class="container d-flex justify-content-center text-center">
+                <div class="relative w-100">
+                    <div class="nav nav-pills d-flex justify-content-center mb-5 gap-4" id="TabStatus" role="tablist">
+                        <button class="nav-link active" id="table1-tab" data-bs-toggle="tab" data-bs-target="#table1" type="button" role="tab" aria-controls="table1" aria-selected="true">
+                            Leaderboard
+                        </button>
+                        <button class="nav-link" id="table2-tab" data-bs-toggle="tab" data-bs-target="#table2" type="button" role="tab" aria-controls="table2" aria-selected="false">Round History</button>
+                    </div>
+                    <div class="controls-container mb-4">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="col-sm-7">
+                                <form action="#">
+                                    <div class="search_box d-block">
+                                        <div class="position-relative">
+                                            <span class="icon">
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="20" height="20" fill="currentColor">
+                                                    <path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352a144 144 0 1 0 0-288 144 144 0 1 0 0 288z" />
+                                                </svg>
+                                            </span>
+                                            <input type="text" class="form-control" id="searchInput" placeholder="Search for a player" />
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="col-auto">
+                                <div class="dropdown">
+                                    <button class="btn btn-cezero dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                        Entries: <span id="currentEntries">25</span>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li><a class="dropdown-item" href="#" data-entries="25">25</a></li>
+                                        <li><a class="dropdown-item" href="#" data-entries="50">50</a></li>
+                                        <li><a class="dropdown-item" href="#" data-entries="100">100</a></li>
+                                        <li><a class="dropdown-item" href="#" data-entries="250">250</a></li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="leaderboard-container">
+                        <div class="tab-content" id="TabStatusContent">
+                            <div class="tab-pane fade show active" id="table1" role="tabpanel" aria-labelledby="table1-tab">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th class="text-center">Rank</th>
+                                            <th class="sortable" data-sort="Name">Name</th>
+                                            <th class="sortable" data-sort="MMR">MMR</th>
+                                            <th class="sortable" data-sort="Avg DMG">Damage</th>
+                                            <th class="sortable" data-sort="Avg Kills">K</th>
+                                            <th class="sortable" data-sort="Avg Deaths">D</th>
+                                            <th class="sortable" data-sort="Avg Assists">A</th>
+                                            <th class="sortable" data-sort="Win_Rate">Win Rate</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="playerStatsBody">
+                                        <!-- Data will be populated here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="tab-pane fade" id="table2" role="tabpanel" aria-labelledby="table2-tab">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th class="sortable" data-sort="Round_ID">Match ID</th>
+                                            <th class="sortable" data-sort="Team1_TopPlayer">Team 1</th>
+                                            <th class="sortable" data-sort="Team2_TopPlayer">Team 2</th>
+                                            <th class="sortable" data-sort="Duration">Duration</th>
+                                            <th class="sortable" data-sort="TotalPlayers">Total Players</th>
+                                            <th class="sortable" data-sort="Date">Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="roundHistoryBody">
+                                        <!-- Repeat for other rows -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pagination-controls mt-3">
+                        <button id="prevPage" class="btn btn-secondary me-2">&laquo; Previous</button>
+                        <span id="pageInfo" class="me-2"></span>
+                        <button id="nextPage" class="btn btn-secondary">Next &raquo;</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Load Bootstrap first -->
+        <script src="assets/js/bootstrap.bundle.min.js"></script>
+        
+
+        <!-- At the bottom of your body tag, before closing -->
+        <script>
+            // Utility function for debouncing
+            function debounce(func, wait) {
+                let timeout;
+                return function executedFunction(...args) {
+                    const later = () => {
+                        clearTimeout(timeout);
+                        func(...args);
+                    };
+                    clearTimeout(timeout);
+                    timeout = setTimeout(later, wait);
+                };
+            }
+
+            // Initialize state object
+            const leaderboardState = {
+                allLeaderboardData: [],
+                currentPage: 1,
+                entriesPerPage: 25,
+                isLoading: false,
+                currentSort: {
+                    column: 'MMR',
+                    direction: 'desc'
+                }
+            };
+
+            function showLoading() {
+                const tbody = document.getElementById('playerStatsBody');
+                tbody.innerHTML = '<tr><td colspan="8"><div class="text-center">Loading...</div></td></tr>';
+            }
+
+            async function fetchData() {
+                if (leaderboardState.isLoading) return;
+                
+                console.log('Starting data fetch...');
+                const startTime = performance.now();
+                
+                try {
+                    showLoading();
+                    leaderboardState.isLoading = true;
+                    
+                    const fetchStartTime = performance.now();
+                    const response = await fetch('get_player_stats.php?get_leaderboard=1');
+                    const data = await response.json();
+                    console.log(`Fetch time: ${performance.now() - fetchStartTime}ms`);
+                    
+                    const processStartTime = performance.now();
+                    leaderboardState.allLeaderboardData = data.leaderboard;
+                    console.log(`Process time: ${performance.now() - processStartTime}ms`);
+                    
+                    const renderStartTime = performance.now();
+                    renderLeaderboard();
+                    updateRoundHistory(data.round_history);
+                    console.log(`Render time: ${performance.now() - renderStartTime}ms`);
+                    
+                    leaderboardState.isLoading = false;
+                    console.log(`Total operation time: ${performance.now() - startTime}ms`);
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    document.getElementById('playerStatsBody').innerHTML = 
+                        `<tr><td colspan="8">Error fetching data: ${error.message}</td></tr>`;
+                    leaderboardState.isLoading = false;
+                }
+            }
+
+            function renderLeaderboard() {
+                const startTime = performance.now();
+                
+                const tbody = document.getElementById('playerStatsBody');
+                const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+                
+                const filterStartTime = performance.now();
+                let filteredData = searchTerm ? 
+                    leaderboardState.allLeaderboardData.filter(player => 
+                        player.Name.toLowerCase().includes(searchTerm)
+                    ) : [...leaderboardState.allLeaderboardData];
+
+                // Sort the data
+                filteredData.sort((a, b) => {
+                    const column = leaderboardState.currentSort.column;
+                    const direction = leaderboardState.currentSort.direction === 'asc' ? 1 : -1;
+                    
+                    let valueA = a[column];
+                    let valueB = b[column];
+                    
+                    // Convert to numbers if possible
+                    if (!isNaN(valueA)) valueA = Number(valueA);
+                    if (!isNaN(valueB)) valueB = Number(valueB);
+                    
+                    if (valueA < valueB) return -1 * direction;
+                    if (valueA > valueB) return 1 * direction;
+                    return 0;
+                });
+                
+                console.log(`Filter time: ${performance.now() - filterStartTime}ms`);
+
+                const domStartTime = performance.now();
+                const fragment = document.createDocumentFragment();
+                
+                const startIndex = (leaderboardState.currentPage - 1) * leaderboardState.entriesPerPage;
+                const endIndex = startIndex + leaderboardState.entriesPerPage;
+                const paginatedData = filteredData.slice(startIndex, endIndex);
+                
+                paginatedData.forEach((player, index) => {
+                    const tr = document.createElement('tr');
+                    const actualRank = startIndex + index + 1;
+                    tr.innerHTML = `
+                        <td>${actualRank}</td>
+                        <td><a href='player.php?id=${encodeURIComponent(player.Player_ID)}'>${player.Name}</a></td>
+                        <td>${player.MMR}</td>
+                        <td>${player['Avg DMG']}</td>
+                        <td>${player['Avg Kills']}</td>
+                        <td>${player['Avg Deaths']}</td>
+                        <td>${player['Avg Assists']}</td>
+                        <td>${player.Win_Rate}%</td>
+                    `;
+                    fragment.appendChild(tr);
+                });
+                
+                tbody.innerHTML = '';
+                tbody.appendChild(fragment);
+                console.log(`DOM manipulation time: ${performance.now() - domStartTime}ms`);
+                
+                updatePagination(filteredData.length);
+                console.log(`Total render time: ${performance.now() - startTime}ms`);
+            }
+
+            // Initialize everything when DOM is loaded
+            document.addEventListener("DOMContentLoaded", function() {
+                console.log('DOM Content Loaded');
+                
+                // Initialize search functionality
+                const searchInput = document.getElementById('searchInput');
+                if (searchInput) {
+                    searchInput.addEventListener('input', debounce(() => {
+                        leaderboardState.currentPage = 1;
+                        renderLeaderboard();
+                    }, 300));
+                }
+
+                // Add pagination button listeners
+                document.getElementById('prevPage').addEventListener('click', () => changePage('prev'));
+                document.getElementById('nextPage').addEventListener('click', () => changePage('next'));
+
+                // Fix entries per page dropdown listeners
+                const dropdownItems = document.querySelectorAll('.dropdown-menu .dropdown-item');
+                dropdownItems.forEach(item => {
+                    item.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        const entries = parseInt(this.getAttribute('data-entries'));
+                        leaderboardState.entriesPerPage = entries;
+                        document.getElementById('currentEntries').textContent = entries;
+                        leaderboardState.currentPage = 1; // Reset to first page
+                        renderLeaderboard();
+                    });
+                });
+
+                // Add click handlers for sortable columns
+                document.querySelectorAll('th.sortable').forEach(header => {
+                    header.addEventListener('click', () => {
+                        sortData(header.dataset.sort);
+                    });
+                });
+
+                // Start initial data fetch
+                console.log('Starting initial fetch');
+                fetchData();
+            });
+
+            // Add pagination functions
+            function updatePagination(totalItems) {
+                const totalPages = Math.ceil(totalItems / leaderboardState.entriesPerPage);
+                const pageInfo = document.getElementById('pageInfo');
+                if (pageInfo) {
+                    pageInfo.textContent = `Page ${leaderboardState.currentPage} of ${totalPages}`;
+                }
+                
+                const prevButton = document.getElementById('prevPage');
+                const nextButton = document.getElementById('nextPage');
+                
+                if (prevButton) {
+                    prevButton.disabled = leaderboardState.currentPage <= 1;
+                }
+                if (nextButton) {
+                    nextButton.disabled = leaderboardState.currentPage >= totalPages;
+                }
+            }
+
+            function changePage(direction) {
+                const totalPages = Math.ceil(leaderboardState.allLeaderboardData.length / leaderboardState.entriesPerPage);
+                
+                if (direction === 'prev' && leaderboardState.currentPage > 1) {
+                    leaderboardState.currentPage--;
+                    renderLeaderboard();
+                } else if (direction === 'next' && leaderboardState.currentPage < totalPages) {
+                    leaderboardState.currentPage++;
+                    renderLeaderboard();
+                }
+            }
+
+            function formatTimeAgo(dateString) {
+                const date = new Date(dateString);
+                const now = new Date();
+                const seconds = Math.floor((now - date) / 1000);
+                const minutes = Math.floor(seconds / 60);
+                const hours = Math.floor(minutes / 60);
+                const days = Math.floor(hours / 24);
+
+                if (seconds < 60) {
+                    return 'Just now';
+                } else if (minutes < 60) {
+                    return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+                } else if (hours < 24) {
+                    return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+                } else {
+                    return `${days} day${days !== 1 ? 's' : ''} ago`;
+                }
+            }
+
+            function updateRoundHistory(roundHistory) {
+                const tbody = document.getElementById('roundHistoryBody');
+                if (!tbody) return;
+
+                tbody.innerHTML = '';
+                roundHistory.forEach(round => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><a href='round.php?id=${encodeURIComponent(round.Round_ID)}'>${round.Round_ID}</a></td>
+                        <td>${round.Team1_TopPlayer} (${round.Team1_PlayerCount})</td>
+                        <td>${round.Team2_TopPlayer} (${round.Team2_PlayerCount})</td>
+                        <td>${round.Duration}</td>
+                        <td>${round.TotalPlayers}</td>
+                        <td>${formatTimeAgo(round.Date)}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            }
+
+            // Add this function to handle sorting
+            function sortData(column) {
+                const headers = document.querySelectorAll('th.sortable');
+                headers.forEach(header => {
+                    if (header.dataset.sort === column) {
+                        // Toggle direction if clicking same column
+                        if (leaderboardState.currentSort.column === column) {
+                            leaderboardState.currentSort.direction = 
+                                leaderboardState.currentSort.direction === 'asc' ? 'desc' : 'asc';
+                        } else {
+                            // New column, default to descending
+                            leaderboardState.currentSort.direction = 'desc';
+                        }
+                        leaderboardState.currentSort.column = column;
+                        
+                        // Update header classes
+                        header.classList.remove('asc', 'desc');
+                        header.classList.add(leaderboardState.currentSort.direction);
+                    } else {
+                        header.classList.remove('asc', 'desc');
+                    }
+                });
+                
+                renderLeaderboard();
+            }
+        </script>
+    </body>
+</html>
