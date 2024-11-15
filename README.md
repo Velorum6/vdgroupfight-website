@@ -1,6 +1,6 @@
 # VD Groupfight Website
 
-A real-time statistics tracking website for the Vestmar Dominion (VD) Groupfight server in Mount & Blade II: Bannerlord.
+A real-time statistics tracking website for the Vestmar Dominion [VD] Ranked Groupfight server in Mount & Blade II: Bannerlord.
 
 This is a live project that you can check at https://vdgroupfight.com
 
