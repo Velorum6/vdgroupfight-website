@@ -1,23 +1,23 @@
 # VD Groupfight Website
 
-A real-time statistics tracking website for the Vestmar Dominion (VD) Groupfight server in Mount & Blade II: Bannerlord.
+A real-time statistics tracking website for the [VD] Ranked Groupfight server in Mount & Blade II: Bannerlord.
 
 This is a live project that you can check at https://vdgroupfight.com
 
 ## Code structure
 
 ### 🏆 Main Leaderboard
-index.html
-get_player_stats.php
+- index.html
+- get_player_stats.php
 
 ### 👤 Player Profiles
-player.php
+- player.php
 
 ### 🎮 Round Details
-round.php
+- round.php
 
 ### 🌐 Player Network Map
-player_map.php
+- player_map.php
 
 ## Technical Stack
 
