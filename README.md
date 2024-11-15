@@ -19,6 +19,9 @@ This is a live project that you can check at https://vdgroupfight.com
 ### 🌐 Player Network Map
 - player_map.php
 
+### Database
+- damage_stats.db
+
 ## Technical Stack
 
 ### Frontend
@@ -41,7 +44,7 @@ This is a live project that you can check at https://vdgroupfight.com
 git clone https://github.com/yourusername/vdgroupfight-website.git
 ```
 
-2. Create and configure `.env` file:
+2. Create and configure `.env` file or connect in local to damage_stats.db
 
 ```env
 DB_SERVER_IP=your_ip_here
