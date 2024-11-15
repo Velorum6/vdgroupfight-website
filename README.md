@@ -7,17 +7,17 @@ This is a live project that you can check at https://vdgroupfight.com
 ## Code structure
 
 ### 🏆 Main Leaderboard
-index.html
-get_player_stats.php
+- index.html
+- get_player_stats.php
 
 ### 👤 Player Profiles
-player.php
+- player.php
 
 ### 🎮 Round Details
-round.php
+- round.php
 
 ### 🌐 Player Network Map
-player_map.php
+- player_map.php
 
 ## Technical Stack
 
