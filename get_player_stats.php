@@ -1,32 +1,14 @@
 <?php
+// Load environment variables from .env file
+$env = parse_ini_file('.env');
+
 ob_start();  // Start output buffering
 error_reporting(E_ALL);
 ini_set('display_errors', 0);  // Don't display errors directly
 
-// Cache configuration
-$cache_file = 'cache/leaderboard_cache.json';
-$cache_time = 60; // Cache lifetime in seconds
-
-// Create cache directory if it doesn't exist
-if (!file_exists('cache')) {
-    mkdir('cache', 0777, true);
-}
-
-// Check if cache exists and is still valid
-if (isset($_GET['get_leaderboard']) && file_exists($cache_file) && (time() - filemtime($cache_file) < $cache_time)) {
-    header('Content-Type: application/json');
-    header('Cache-Control: public, max-age=' . $cache_time);
-    header('Last-Modified: ' . gmdate('D, d M Y H:i:s', filemtime($cache_file)) . ' GMT');
-    echo file_get_contents($cache_file);
-    exit;
-}
-
 function query_db($query) {
-    // Load environment variables from .env file
-    $env = parse_ini_file('.env');
-    $public_ip = $env['DB_SERVER_IP'];
-    $server_port = $env['DB_SERVER_PORT'];
-    $server_url = "http://{$public_ip}:{$server_port}/db_server.php";
+    global $env;
+    $server_url = "http://{$env['DB_SERVER_IP']}:{$env['DB_SERVER_PORT']}/db_server.php";
     $url = $server_url . '?query=' . urlencode($query);
     
     $response = file_get_contents($url);
@@ -50,41 +32,25 @@ function formatDuration($seconds) {
     return sprintf("%d:%02d", $minutes, $remainingSeconds);
 }
 
-$query = "WITH LastGame AS (
-    SELECT Player_ID, MAX(Round_ID) as Last_Round
-    FROM Round_Player
-    GROUP BY Player_ID
-)
-SELECT 
-    rp.Player_ID,
-    rp.Name,
-    COALESCE(MAX(CASE WHEN rp.Round_ID = lg.Last_Round THEN rp.MMR END), 1000) as MMR,
-    ROUND(AVG(rp.Total_Damage), 2) as 'Avg DMG',
-    ROUND(AVG(COALESCE(k.Kills, 0)), 2) as 'Avg Kills',
-    ROUND(AVG(COALESCE(d.Deaths, 0)), 2) as 'Avg Deaths',
-    ROUND(AVG(COALESCE(a.Assists, 0)), 2) as 'Avg Assists',
-    ROUND(SUM(CASE WHEN r.WinnerTeam = rp.Team THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as Win_Rate
-FROM Round_Player rp
-JOIN Rounds r ON rp.Round_ID = r.Round_ID
-LEFT JOIN (
-    SELECT Killer_ID as Player_ID, Round_ID, COUNT(*) as Kills
-    FROM Kills
-    GROUP BY Killer_ID, Round_ID
-) k ON rp.Player_ID = k.Player_ID AND rp.Round_ID = k.Round_ID
-LEFT JOIN (
-    SELECT Killed_ID as Player_ID, Round_ID, COUNT(*) as Deaths
-    FROM Kills
-    GROUP BY Killed_ID, Round_ID
-) d ON rp.Player_ID = d.Player_ID AND rp.Round_ID = d.Round_ID
-LEFT JOIN (
-    SELECT Assist_ID as Player_ID, Round_ID, COUNT(*) as Assists
-    FROM Kills
-    WHERE Assist_ID IS NOT NULL
-    GROUP BY Assist_ID, Round_ID
-) a ON rp.Player_ID = a.Player_ID AND rp.Round_ID = a.Round_ID
-JOIN LastGame lg ON rp.Player_ID = lg.Player_ID
-GROUP BY rp.Player_ID
-ORDER BY MMR DESC";
+if (isset($_GET['check_update'])) {
+    $check_query = "SELECT last_updated FROM player_stats_projection ORDER BY last_updated DESC LIMIT 1";
+    $result = query_db($check_query);
+    echo json_encode(['last_updated' => $result[0]['last_updated']]);
+    exit;
+}
+
+$query = "SELECT 
+    player_id as Player_ID,
+    name as Name,
+    mmr as MMR,
+    avg_damage as 'Avg DMG',
+    avg_kills as 'Avg Kills',
+    avg_deaths as 'Avg Deaths',
+    avg_assists as 'Avg Assists',
+    win_rate as Win_Rate,
+    matches_played as Matches_Played,
+    last_updated as Last_Updated
+FROM player_stats_projection";
 
 $leaderboard_data = query_db($query);
 
@@ -115,7 +81,8 @@ SELECT
 FROM Rounds r
 JOIN PlayerStats ps ON r.Round_ID = ps.Round_ID
 GROUP BY r.Round_ID
-ORDER BY r.Round_ID DESC";
+ORDER BY r.Round_ID DESC
+LIMIT 10";
 
 $round_history_data = query_db($round_history_query);
 
@@ -132,12 +99,11 @@ if (isset($_GET['get_leaderboard'])) {
         'round_history' => $round_history_data
     ]);
     
-    // Save to cache file
-    file_put_contents($cache_file, $json_response);
-    
+    // Prevent caching
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Cache-Control: post-check=0, pre-check=0', false);
+    header('Pragma: no-cache');
     header('Content-Type: application/json');
-    header('Cache-Control: public, max-age=' . $cache_time);
-    header('Last-Modified: ' . gmdate('D, d M Y H:i:s', filemtime($cache_file)) . ' GMT');
     echo $json_response;
     exit;
 }

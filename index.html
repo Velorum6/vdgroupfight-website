@@ -211,10 +211,35 @@
                     showLoading();
                     leaderboardState.isLoading = true;
                     
-                    const fetchStartTime = performance.now();
-                    const response = await fetch('get_player_stats.php?get_leaderboard=1');
-                    const data = await response.json();
-                    console.log(`Fetch time: ${performance.now() - fetchStartTime}ms`);
+                    // First, check the last update time from the database
+                    const checkResponse = await fetch('get_player_stats.php?check_update=1');
+                    const checkData = await checkResponse.json();
+                    const serverLastUpdate = checkData.last_updated;
+                    
+                    // Check local storage
+                    const cachedData = localStorage.getItem('leaderboardData');
+                    let data;
+                    
+                    if (cachedData) {
+                        const parsed = JSON.parse(cachedData);
+                        // Compare last_updated values
+                        if (parsed.last_updated >= serverLastUpdate) {
+                            console.log('Using cached data');
+                            data = parsed;
+                        } else {
+                            console.log('Cache outdated, fetching new data');
+                            const response = await fetch('get_player_stats.php?get_leaderboard=1');
+                            data = await response.json();
+                            // Update cache
+                            localStorage.setItem('leaderboardData', JSON.stringify(data));
+                        }
+                    } else {
+                        console.log('No cache found, fetching new data');
+                        const response = await fetch('get_player_stats.php?get_leaderboard=1');
+                        data = await response.json();
+                        // Store in cache
+                        localStorage.setItem('leaderboardData', JSON.stringify(data));
+                    }
                     
                     const processStartTime = performance.now();
                     leaderboardState.allLeaderboardData = data.leaderboard;
@@ -243,12 +268,23 @@
                 const searchTerm = document.getElementById('searchInput').value.toLowerCase();
                 
                 const filterStartTime = performance.now();
+                
+                // First sort all data by MMR to establish correct ranks
+                if (!leaderboardState.allLeaderboardData[0].hasOwnProperty('originalRank')) {
+                    // Sort by MMR descending first
+                    leaderboardState.allLeaderboardData.sort((a, b) => b.MMR - a.MMR);
+                    // Then assign ranks
+                    leaderboardState.allLeaderboardData.forEach((player, index) => {
+                        player.originalRank = index + 1;
+                    });
+                }
+                
                 let filteredData = searchTerm ? 
                     leaderboardState.allLeaderboardData.filter(player => 
                         player.Name.toLowerCase().includes(searchTerm)
                     ) : [...leaderboardState.allLeaderboardData];
 
-                // Sort the data
+                // Sort the data based on current sort settings
                 filteredData.sort((a, b) => {
                     const column = leaderboardState.currentSort.column;
                     const direction = leaderboardState.currentSort.direction === 'asc' ? 1 : -1;
@@ -274,11 +310,11 @@
                 const endIndex = startIndex + leaderboardState.entriesPerPage;
                 const paginatedData = filteredData.slice(startIndex, endIndex);
                 
-                paginatedData.forEach((player, index) => {
+                paginatedData.forEach((player) => {
                     const tr = document.createElement('tr');
-                    const actualRank = startIndex + index + 1;
+                    console.log(player.Last_Updated);
                     tr.innerHTML = `
-                        <td>${actualRank}</td>
+                        <td>${player.originalRank}</td>
                         <td><a href='player.php?id=${encodeURIComponent(player.Player_ID)}'>${player.Name}</a></td>
                         <td>${player.MMR}</td>
                         <td>${player['Avg DMG']}</td>
