@@ -223,22 +223,35 @@
                     if (cachedData) {
                         const parsed = JSON.parse(cachedData);
                         // Compare last_updated values
-                        if (parsed.last_updated >= serverLastUpdate) {
+                        if (parsed.last_updated && parsed.last_updated >= serverLastUpdate) {
                             console.log('Using cached data');
-                            data = parsed;
+                            data = {
+                                leaderboard: parsed.leaderboard,
+                                round_history: parsed.round_history
+                            };
                         } else {
                             console.log('Cache outdated, fetching new data');
                             const response = await fetch('get_player_stats.php?get_leaderboard=1');
                             data = await response.json();
-                            // Update cache
-                            localStorage.setItem('leaderboardData', JSON.stringify(data));
+                            // Update cache with new structure
+                            const cacheObject = {
+                                leaderboard: data.leaderboard,
+                                round_history: data.round_history,
+                                last_updated: serverLastUpdate
+                            };
+                            localStorage.setItem('leaderboardData', JSON.stringify(cacheObject));
                         }
                     } else {
                         console.log('No cache found, fetching new data');
                         const response = await fetch('get_player_stats.php?get_leaderboard=1');
                         data = await response.json();
                         // Store in cache
-                        localStorage.setItem('leaderboardData', JSON.stringify(data));
+                        const cacheObject = {
+                            leaderboard: data.leaderboard,
+                            round_history: data.round_history,
+                            last_updated: serverLastUpdate
+                        };
+                        localStorage.setItem('leaderboardData', JSON.stringify(cacheObject));
                     }
                     
                     const processStartTime = performance.now();
