@@ -10,191 +10,158 @@ if (empty($player_id) || !preg_match('/^[0-9.]+$/', $player_id)) {
     die("Invalid player ID");
 }
 
-$main_query = "WITH PlayerRounds AS (
-    SELECT 
-        rp.Name,
-        rp.Player_ID,
-        rp.Round_ID,
-        rp.MMR,
-        r.WinnerTeam,
-        rp.Team,
-        rp.Total_Damage,
-        rp.Melee_Damage,
-        rp.Ranged_Damage,
-        rp.Throwing_Damage,
-        rp.Mounted_Melee_Damage,
-        rp.Mounted_Ranged_Damage,
-        rp.Mounted_Throwing_Damage,
-        rp.HP,
-        r.Date as Datee,
-        r.Time as Round_Duration,
-        CASE 
-            WHEN k.Survival_Time IS NULL AND r.WinnerTeam != rp.Team THEN 'Abandoned'
-            WHEN k.Survival_Time IS NULL THEN 'Alive'
-            ELSE k.Survival_Time
-        END as Survival_Time,
-        (SELECT COUNT(*) FROM Kills WHERE Killer_ID = rp.Player_ID AND Round_ID = rp.Round_ID) as Kills,
-        (SELECT COUNT(*) FROM Kills WHERE Assist_ID = rp.Player_ID AND Round_ID = rp.Round_ID) as Assists
-    FROM Round_Player rp
-    JOIN Rounds r ON rp.Round_ID = r.Round_ID
-    LEFT JOIN Kills k ON rp.Round_ID = k.Round_ID AND rp.Player_ID = k.Killed_ID
-    WHERE rp.Player_ID = '$player_id'
-)
-SELECT 
-    Name,
-    Player_ID,
-    SUM(Total_Damage) as Total_Damage,
-    SUM(Melee_Damage) as Melee_Damage,
-    SUM(Ranged_Damage) as Ranged_Damage,
-    SUM(Throwing_Damage) as Throwing_Damage,
-    SUM(Mounted_Melee_Damage) as Mounted_Melee_Damage,
-    SUM(Mounted_Ranged_Damage) as Mounted_Ranged_Damage,
-    SUM(Mounted_Throwing_Damage) as Mounted_Throwing_Damage,
-    COUNT(*) as Rounds_Played,
-    SUM(CASE WHEN WinnerTeam = Team THEN 1 ELSE 0 END) as Wins,
-    SUM(Kills) as Total_Kills,
-    SUM(CASE WHEN Survival_Time != 'Alive' AND Survival_Time != 'Abandoned' THEN 1 ELSE 0 END) as Total_Deaths,
-    SUM(Assists) as Total_Assists,
-    MAX(MMR) as Highest_MMR,
-    MIN(MMR) as Lowest_MMR,
-    (SELECT MMR FROM PlayerRounds ORDER BY Round_ID DESC LIMIT 1) as Current_MMR,
-    GROUP_CONCAT(Round_ID || ',' || 
-                 WinnerTeam || ',' || 
-                 Team || ',' || 
-                 Round_Duration || ',' || 
-                 Survival_Time || ',' || 
-                 Total_Damage || ',' ||
-                 Kills || ',' ||
-                 Assists || ',' ||
-                 Round_ID || ',' ||
-                 HP || ',' ||
-                 MMR || ',' || 
-                 Datee) as Match_History
-FROM PlayerRounds
-GROUP BY Player_ID, Name";
+$main_query = "SELECT 
+    name as Name,
+    player_id as Player_ID,
+    current_mmr as Current_MMR,
+    highest_mmr as Highest_MMR,
+    lowest_mmr as Lowest_MMR,
+    total_damage as Total_Damage,
+    rounds_played as Rounds_Played,
+    wins as Wins,
+    total_kills as Total_Kills,
+    total_deaths as Total_Deaths,
+    total_assists as Total_Assists,
+    avg_damage as Avg_Damage,
+    avg_kills as Avg_Kills,
+    avg_deaths as Avg_Deaths,
+    avg_assists as Avg_Assists,
+    CAST(win_rate as FLOAT) as Win_Rate
+FROM player_detailed_stats_projection
+WHERE player_id = '$player_id'";
 
+$start_time = microtime(true);
+
+$query_start = microtime(true);
 $player_data = query_db($main_query);
+$query_time = microtime(true) - $query_start;
+error_log("Main query execution time: " . round($query_time * 1000, 2) . "ms");
 
 if (empty($player_data)) {
     die("No data found for player ID: " . htmlspecialchars($player_id));
 }
 $player_data = $player_data[0];  // Assuming the first row is what we want
 
-// Parse the Match_History
-$match_history_raw = explode(',', $player_data['Match_History']);
-$match_history = [];
-for ($i = 0; $i < count($match_history_raw); $i += 12) {
-    $match_history[] = [
-        'round_id' => $match_history_raw[$i],
-        'winner_team' => $match_history_raw[$i + 1],
-        'player_team' => $match_history_raw[$i + 2],
-        'round_duration' => $match_history_raw[$i + 3],
-        'survival_time' => $match_history_raw[$i + 4],
-        'total_damage' => $match_history_raw[$i + 5],
-        'kills' => $match_history_raw[$i + 6],
-        'assists' => $match_history_raw[$i + 7],
-        'sort_round_id' => $match_history_raw[$i + 8],
-        'hp' => $match_history_raw[$i + 9],
-        'mmr' => $match_history_raw[$i + 10],
-        'date' => $match_history_raw[$i + 11]
-    ];
+// Update the match history query to use the date directly
+$match_history_query = "WITH PlayerKillsAssists AS (
+    SELECT 
+        Round_ID, 
+        Killer_ID, 
+        Assist_ID,
+        COUNT(CASE WHEN Killer_ID = '$player_id' THEN 1 END) AS Total_Kills,
+        COUNT(CASE WHEN Assist_ID = '$player_id' THEN 1 END) AS Total_Assists
+    FROM 
+        Kills
+    WHERE 
+        Killer_ID = '$player_id' 
+        OR Assist_ID = '$player_id'
+    GROUP BY 
+        Round_ID
+)
+SELECT 
+    rp.Round_ID AS round_id,
+    r.WinnerTeam AS winner_team,
+    rp.Team AS player_team,
+    r.Time AS round_duration,
+    CASE 
+        WHEN k.Survival_Time IS NULL AND r.WinnerTeam != rp.Team THEN 'Abandoned'
+        WHEN k.Survival_Time IS NULL THEN 'Alive'
+        ELSE k.Survival_Time
+    END AS survival_time,
+    rp.Total_Damage AS total_damage,
+    COALESCE(pk.Total_Kills, 0) AS kills,
+    COALESCE(pk.Total_Assists, 0) AS assists,
+    rp.HP AS hp,
+    rp.MMR AS mmr,
+    r.Date AS date
+FROM 
+    Round_Player rp
+JOIN 
+    Rounds r ON rp.Round_ID = r.Round_ID
+LEFT JOIN 
+    Kills k ON rp.Round_ID = k.Round_ID AND rp.Player_ID = k.Killed_ID
+LEFT JOIN 
+    PlayerKillsAssists pk ON rp.Round_ID = pk.Round_ID
+WHERE 
+    rp.Player_ID = '$player_id'
+ORDER BY 
+    rp.Round_ID DESC
+LIMIT 100;";
+
+$query_start = microtime(true);
+$match_history = query_db($match_history_query);
+$query_time = microtime(true) - $query_start;
+error_log("Match history query execution time: " . round($query_time * 1000, 2) . "ms");
+
+// Prepare MMR history data
+$mmr_history = [];
+if (!empty($match_history)) {
+    // Create MMR history array in chronological order (oldest to newest)
+    $reversed_matches = array_reverse($match_history);
+    foreach ($reversed_matches as $match) {
+        if (isset($match['round_id']) && isset($match['mmr'])) {
+            $mmr_history[] = [
+                'Round_ID' => intval($match['round_id']),
+                'MMR' => intval($match['mmr'])
+            ];
+        }
+    }
 }
 
-
-// Sort the match history by Round_ID in descending order
-usort($match_history, function($a, $b) {
-    return $b['sort_round_id'] - $a['sort_round_id'];
-});
-
-// Separate query for MMR history
-$mmr_query = "SELECT MMR, Round_ID
-              FROM Round_Player
-              WHERE Player_ID = '$player_id'
-              ORDER BY Round_ID DESC
-              LIMIT 100";
-
-$mmr_history = query_db($mmr_query);
-$mmr_history = array_reverse($mmr_history);
-
-// Prepare MMR data for the chart
-$mmr_data = [];
-foreach ($mmr_history as $entry) {
-    $mmr_data[] = [
-        'round' => $entry['Round_ID'],
-        'mmr' => $entry['MMR']
-    ];
+// Prepare match data for session grouping with error checking
+$matches_for_sessions = [];
+if (!empty($match_history)) {
+    $matches_for_sessions = array_map(function($match) {
+        if (!is_array($match)) return null;
+        
+        return [
+            'round_id' => $match['round_id'] ?? 0,
+            'winner_team' => $match['winner_team'] ?? '',
+            'player_team' => $match['player_team'] ?? '',
+            'total_damage' => $match['total_damage'] ?? 0,
+            'kills' => $match['kills'] ?? 0,
+            'assists' => $match['assists'] ?? 0,
+            'hp' => $match['hp'] ?? 0,
+            'mmr' => $match['mmr'] ?? 0,
+            'date' => $match['date'] ?? '',
+            'survival_time' => $match['survival_time'] ?? 0,
+            'round_duration' => $match['round_duration'] ?? 0
+        ];
+    }, $match_history);
+    
+    // Remove any null values
+    $matches_for_sessions = array_filter($matches_for_sessions);
 }
 
-// Calculate win rate
-$win_rate = ($player_data['Rounds_Played'] > 0) ? round(($player_data['Wins'] / $player_data['Rounds_Played']) * 100, 2) : 0;
+// Group matches into sessions only if we have valid data
+$sessions = !empty($matches_for_sessions) ? groupMatchesIntoSessions($matches_for_sessions) : [];
 
-// Calculate averages
-$player_data['Avg_Damage'] = $player_data['Rounds_Played'] > 0 ? round($player_data['Total_Damage'] / $player_data['Rounds_Played'], 2) : 0;
-$player_data['Avg_Kills'] = $player_data['Rounds_Played'] > 0 ? round($player_data['Total_Kills'] / $player_data['Rounds_Played'], 2) : 0;
-$player_data['Avg_Deaths'] = $player_data['Rounds_Played'] > 0 ? round($player_data['Total_Deaths'] / $player_data['Rounds_Played'], 2) : 0;
-$player_data['Avg_Assists'] = $player_data['Rounds_Played'] > 0 ? round($player_data['Total_Assists'] / $player_data['Rounds_Played'], 2) : 0;
-$player_data['Avg_Mounted_Melee_Damage'] = $player_data['Rounds_Played'] > 0 ? round($player_data['Mounted_Melee_Damage'] / $player_data['Rounds_Played'], 2) : 0;
-$player_data['Avg_Mounted_Ranged_Damage'] = $player_data['Rounds_Played'] > 0 ? round($player_data['Mounted_Ranged_Damage'] / $player_data['Rounds_Played'], 2) : 0;
-$player_data['Avg_Mounted_Throwing_Damage'] = $player_data['Rounds_Played'] > 0 ? round($player_data['Mounted_Throwing_Damage'] / $player_data['Rounds_Played'], 2) : 0;
-
-// Calculate damage percentages
-$total_damage = $player_data['Total_Damage'];
-$damage_types = [
-    'Melee' => $player_data['Melee_Damage'],
-    'Ranged' => $player_data['Ranged_Damage'],
-    'Throwing' => $player_data['Throwing_Damage'],
-    'Mounted Melee' => $player_data['Mounted_Melee_Damage'],
-    'Mounted Ranged' => $player_data['Mounted_Ranged_Damage'],
-    'Mounted Throwing' => $player_data['Mounted_Throwing_Damage']
-];
-
-
-$damage_percentages = array_map(function($damage) use ($total_damage) {
-    return $total_damage > 0 ? round(($damage / $total_damage) * 100, 2) : 0;
-}, $damage_types);
-
-// Function to group matches into sessions
+// Update the groupMatchesIntoSessions function to handle the date format
 function groupMatchesIntoSessions($matches, $maxTimeDiff = 1800) {
     if (empty($matches)) {
         return [];
     }
 
-    // Sort matches by round_id ascending (oldest first)
-    usort($matches, function($a, $b) {
-        return $a['round_id'] - $b['round_id'];
-    });
-
     $sessions = [];
     $currentSession = [];
     $lastMatchTime = null;
-    $lastSessionMMR = null;
-    
+
     foreach ($matches as $match) {
-        $currentMatchTime = strtotime($match['date']);
+        // Convert the date string to timestamp
+        $currentTime = strtotime($match['date']);
         
-        if ($lastMatchTime === null || 
-            ($currentMatchTime - $lastMatchTime) > $maxTimeDiff) {
+        if (empty($currentSession) || 
+            ($lastMatchTime && ($lastMatchTime - $currentTime) > $maxTimeDiff)) {  // Note: reversed time comparison
             
             if (!empty($currentSession)) {
-                // Sort the current session matches in descending order
-                usort($currentSession, function($a, $b) {
-                    return $b['round_id'] - $a['round_id'];
-                });
-                
-                $lastMatch = end($currentSession);
-                $startingMMR = $lastSessionMMR ?? $currentSession[count($currentSession)-1]['mmr'];
-                
                 $sessions[] = [
-                    'matches' => $currentSession,
+                    'session_start' => $currentSession[0]['date'],  // Use date string directly
                     'matches_count' => count($currentSession),
-                    'mmr_start' => $startingMMR,
-                    'mmr_end' => $currentSession[0]['mmr'],  // Changed to first match since order is reversed
-                    'mmr_change' => $currentSession[0]['mmr'] - $startingMMR,
-                    'session_start' => date('Y-m-d H:i:s', strtotime($currentSession[count($currentSession)-1]['date'])),
-                    'session_end' => date('Y-m-d H:i:s', strtotime($currentSession[0]['date']))
+                    'mmr_start' => end($currentSession)['mmr'],
+                    'mmr_end' => $currentSession[0]['mmr'],
+                    'mmr_change' => $currentSession[0]['mmr'] - end($currentSession)['mmr'],
+                    'matches' => $currentSession
                 ];
-                
-                $lastSessionMMR = $currentSession[0]['mmr'];
             }
             
             $currentSession = [$match];
@@ -202,57 +169,44 @@ function groupMatchesIntoSessions($matches, $maxTimeDiff = 1800) {
             $currentSession[] = $match;
         }
         
-        $lastMatchTime = $currentMatchTime;
+        $lastMatchTime = $currentTime;
     }
     
-    // Handle the last session
+    // Add the last session
     if (!empty($currentSession)) {
-        // Sort the last session matches in descending order
-        usort($currentSession, function($a, $b) {
-            return $b['round_id'] - $a['round_id'];
-        });
-        
-        $startingMMR = $lastSessionMMR ?? $currentSession[count($currentSession)-1]['mmr'];
-        
         $sessions[] = [
-            'matches' => $currentSession,
+            'session_start' => $currentSession[0]['date'],
             'matches_count' => count($currentSession),
-            'mmr_start' => $startingMMR,
+            'mmr_start' => end($currentSession)['mmr'],
             'mmr_end' => $currentSession[0]['mmr'],
-            'mmr_change' => $currentSession[0]['mmr'] - $startingMMR,
-            'session_start' => date('Y-m-d H:i:s', strtotime($currentSession[count($currentSession)-1]['date'])),
-            'session_end' => date('Y-m-d H:i:s', strtotime($currentSession[0]['date']))
+            'mmr_change' => $currentSession[0]['mmr'] - end($currentSession)['mmr'],
+            'matches' => $currentSession
         ];
     }
     
-    return array_reverse($sessions);
+    return $sessions;
 }
 
-function getRelativeTime($date) {
-    $timestamp = strtotime($date);
-    $difference = time() - $timestamp;
-    
-    $periods = [
-        31536000 => 'year',
-        2592000 => 'month',
-        604800 => 'week',
-        86400 => 'day',
-        3600 => 'hour',
-        60 => 'minute',
-        1 => 'second'
-    ];
-    
-    foreach ($periods as $seconds => $label) {
-        if ($difference >= $seconds) {
-            $time = floor($difference / $seconds);
-            return $time . ' ' . $label . ($time > 1 ? 's' : '') . ' ago';
-        }
+// Update getRelativeTime function to handle the date format
+function getRelativeTime($datetime) {
+    $now = new DateTime();
+    $ago = new DateTime($datetime);  // This will work directly with the date string
+    $diff = $now->diff($ago);
+
+    if ($diff->d > 0) {
+        return $diff->d . ' day' . ($diff->d > 1 ? 's' : '') . ' ago';
+    } elseif ($diff->h > 0) {
+        return $diff->h . ' hour' . ($diff->h > 1 ? 's' : '') . ' ago';
+    } elseif ($diff->i > 0) {
+        return $diff->i . ' minute' . ($diff->i > 1 ? 's' : '') . ' ago';
+    } else {
+        return 'just now';
     }
-    
-    return 'just now';
 }
 
-// In your player.php, replace the match history section with:
+// At the end of PHP processing
+$total_php_time = microtime(true) - $start_time;
+error_log("Total PHP execution time: " . round($total_php_time * 1000, 2) . "ms");
 
 ?>
 <!DOCTYPE html>
@@ -267,6 +221,8 @@ function getRelativeTime($date) {
     <link rel="shortcut icon" href="assets/img/favicon.ico" />
     <link rel="stylesheet" href="assets/css/bootstrap.min.css" />
     <link rel="stylesheet" href="assets/css/main.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="assets/js/bootstrap.bundle.min.js"></script>
     <style>
         .card-transparent {
             background-color: rgba(0, 0, 0, 0.3); /* More transparent background */
@@ -359,9 +315,9 @@ function getRelativeTime($date) {
             color: #cbd3da;
         }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+
     <div class="container mt-5">
         <div class="row justify-content-center">
             <div class="col-md-10">
@@ -418,7 +374,7 @@ function getRelativeTime($date) {
                                     </li>
                                     <li class="list-group-item list-group-item-transparent text-light d-flex justify-content-between">
                                         <span>Win Rate:</span>
-                                        <span><?php echo number_format($win_rate, 2); ?>%</span>
+                                        <span><?php echo number_format($player_data['Win_Rate'], 2); ?>%</span>
                                     </li>
                                 </ul>
                             </div>
@@ -469,77 +425,243 @@ function getRelativeTime($date) {
                         </div>
                         <div class="row mt-4">
                             <div class="col-12">
-                                <div class="chart-container" style="position: relative; height:400px; width:100%;">
+                                <div class="chart-container" style="position: relative; height:400px; width:100%; background-color: rgba(13, 17, 23, 0.7); border-radius: 8px; padding: 20px;">
                                     <canvas id="mmrChart"></canvas>
                                 </div>
+                                <script>
+                                    console.time('Total Page Load');
+                                    console.time('MMR Chart Generation');
+
+                                    var mmrCanvas = document.getElementById('mmrChart');
+                                    var mmrData = <?php echo json_encode($mmr_history, JSON_NUMERIC_CHECK); ?>;
+                                    
+                                    if (typeof Chart !== 'undefined') {
+                                        try {
+                                            console.time('Chart Creation');
+                                            var ctx = mmrCanvas.getContext('2d');
+                                            var chart = new Chart(ctx, {
+                                                type: 'line',
+                                                data: {
+                                                    labels: mmrData.map(item => 'Round ' + item.Round_ID),
+                                                    datasets: [{
+                                                        label: 'MMR',
+                                                        data: mmrData.map(item => item.MMR),
+                                                        borderColor: 'rgb(45, 208, 208)',
+                                                        backgroundColor: 'rgba(45, 208, 208, 0.1)',
+                                                        borderWidth: 2,
+                                                        tension: 0.4,
+                                                        fill: true,
+                                                        pointRadius: 4,
+                                                        pointBackgroundColor: 'rgb(45, 208, 208)',
+                                                        pointBorderColor: 'rgb(45, 208, 208)',
+                                                        pointHoverRadius: 6,
+                                                        pointHoverBackgroundColor: '#fff',
+                                                        pointHoverBorderColor: 'rgb(45, 208, 208)'
+                                                    }]
+                                                },
+                                                options: {
+                                                    responsive: true,
+                                                    maintainAspectRatio: false,
+                                                    plugins: {
+                                                        title: {
+                                                            display: true,
+                                                            text: 'MMR History (Last 100 Matches)',
+                                                            color: '#9ca3af',
+                                                            font: {
+                                                                size: 16
+                                                            },
+                                                            padding: {
+                                                                bottom: 30
+                                                            }
+                                                        },
+                                                        legend: {
+                                                            display: false
+                                                        },
+                                                        tooltip: {
+                                                            backgroundColor: 'rgba(13, 17, 23, 0.9)',
+                                                            titleColor: '#6b7280',
+                                                            bodyColor: '#fff',
+                                                            bodyFont: {
+                                                                size: 14,
+                                                                weight: 'bold'
+                                                            },
+                                                            padding: 12,
+                                                            displayColors: false,
+                                                            callbacks: {
+                                                                title: function(context) {
+                                                                    return 'Round ' + mmrData[context[0].dataIndex].Round_ID;
+                                                                },
+                                                                beforeLabel: function(context) {
+                                                                    return 'MMR: ' + context.raw;
+                                                                },
+                                                                label: function(context) {
+                                                                    let currentMMR = context.raw;
+                                                                    let prevMMR = context.dataIndex > 0 ? mmrData[context.dataIndex - 1].MMR : currentMMR;
+                                                                    let change = currentMMR - prevMMR;
+                                                                    return change >= 0 ? 
+                                                                        `(+${change})` : 
+                                                                        `(${change})`;
+                                                                },
+                                                                labelTextColor: function(context) {
+                                                                    let currentMMR = context.raw;
+                                                                    let prevMMR = context.dataIndex > 0 ? mmrData[context.dataIndex - 1].MMR : currentMMR;
+                                                                    let change = currentMMR - prevMMR;
+                                                                    return change >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)';
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    scales: {
+                                                        x: {
+                                                            grid: {
+                                                                color: 'rgba(255, 255, 255, 0.05)',
+                                                                drawBorder: false
+                                                            },
+                                                            ticks: {
+                                                                color: '#6b7280',
+                                                                font: {
+                                                                    size: 11
+                                                                },
+                                                                maxRotation: 45,
+                                                                minRotation: 45
+                                                            }
+                                                        },
+                                                        y: {
+                                                            grid: {
+                                                                color: 'rgba(255, 255, 255, 0.05)',
+                                                                drawBorder: false
+                                                            },
+                                                            ticks: {
+                                                                color: '#6b7280',
+                                                                font: {
+                                                                    size: 12
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    interaction: {
+                                                        intersect: false,
+                                                        mode: 'index'
+                                                    }
+                                                }
+                                            });
+                                            console.timeEnd('Chart Creation');
+                                        } catch (error) {
+                                            console.error('Error creating chart:', error);
+                                        }
+                                    }
+                                    console.timeEnd('MMR Chart Generation');
+
+                                    // Add timer for session rendering
+                                    console.time('Session Rendering');
+                                    document.querySelectorAll('.hp-underline').forEach(row => {
+                                        const hp = parseInt(row.dataset.hp);
+                                        if (!isNaN(hp)) {
+                                            row.style.setProperty('--hp-width', `${hp}%`);
+                                        }
+                                    });
+                                    console.timeEnd('Session Rendering');
+
+                                    // At the end of all scripts
+                                    window.addEventListener('load', () => {
+                                        console.timeEnd('Total Page Load');
+                                        
+                                        // Log memory usage if available
+                                        if (window.performance && window.performance.memory) {
+                                            console.log('Memory Usage:', {
+                                                usedJSHeapSize: Math.round(performance.memory.usedJSHeapSize / 1048576) + 'MB',
+                                                totalJSHeapSize: Math.round(performance.memory.totalJSHeapSize / 1048576) + 'MB'
+                                            });
+                                        }
+                                    });
+                                </script>
                             </div>
                         </div>
                         <div class="row mt-4">
                             <div class="col-12">
                                 <h3 class="text-center mb-3">Session History</h3>
-                                <?php 
-                                $sessions = groupMatchesIntoSessions($match_history);
-                                foreach ($sessions as $index => $session): 
-                                    $sessionId = "session-" . $index;
-                                    $mmrChangeClass = $session['mmr_change'] >= 0 ? 'text-success' : 'text-danger';
-                                    $mmrChangeSign = $session['mmr_change'] >= 0 ? '+' : '';
-                                ?>
-                                    <div class="session-container mb-3">
-                                        <div class="session-header d-flex justify-content-between align-items-center p-3 bg-dark rounded" 
-                                             data-bs-toggle="collapse" 
-                                             data-bs-target="#<?php echo $sessionId; ?>" 
-                                             style="cursor: pointer;">
-                                            <div class="d-flex align-items-center">
-                                                <span class="session-time"><?php echo getRelativeTime($session['session_start']); ?></span>
-                                                <span class="session-rounds"><?php echo $session['matches_count']; ?> rounds</span>
-                                            </div>
-                                            <div>
-                                                <span>MMR: <?php echo $session['mmr_start']; ?> → <?php echo $session['mmr_end']; ?>
-                                                    <span class="<?php echo $mmrChangeClass; ?>">
-                                                        (<?php echo $mmrChangeSign . $session['mmr_change']; ?>)
+                                <div id="sessions-container">
+                                    <?php 
+                                    foreach ($sessions as $index => $session): 
+                                        $sessionId = "session-" . $index;
+                                        $mmrChangeClass = $session['mmr_change'] >= 0 ? 'text-success' : 'text-danger';
+                                        $mmrChangeSign = $session['mmr_change'] >= 0 ? '+' : '';
+                                    ?>
+                                        <div class="session-container mb-3" data-last-match-date="<?php echo $session['matches'][0]['date']; ?>">
+                                            <div class="session-header d-flex justify-content-between align-items-center p-3 bg-dark rounded" 
+                                                 data-bs-toggle="collapse" 
+                                                 data-bs-target="#<?php echo $sessionId; ?>" 
+                                                 style="cursor: pointer;">
+                                                <div class="d-flex align-items-center">
+                                                    <span class="session-time"><?php echo getRelativeTime($session['session_start']); ?></span>
+                                                    <span class="session-rounds"><?php echo $session['matches_count']; ?> rounds</span>
+                                                </div>
+                                                <div>
+                                                    <span>MMR: <?php echo $session['mmr_start']; ?> → <?php echo $session['mmr_end']; ?>
+                                                        <span class="<?php echo $mmrChangeClass; ?>">
+                                                            (<?php echo $mmrChangeSign . $session['mmr_change']; ?>)
+                                                        </span>
                                                     </span>
-                                                </span>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="collapse" id="<?php echo $sessionId; ?>">
+                                                <div class="session-matches mt-2">
+                                                    <table class="table table-dark table-hover">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Round</th>
+                                                                <th>Result</th>
+                                                                <th>Total Damage</th>
+                                                                <th>Kills</th>
+                                                                <th>Assists</th>
+                                                                <th>Survival Time</th>
+                                                                <th>Round Duration</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                        <?php 
+                                                        if (!empty($session['matches']) && is_array($session['matches'])) {
+                                                            foreach ($session['matches'] as $match): 
+                                                                // Add debug output for each match
+                                                                echo "<!-- Processing match: " . print_r($match, true) . " -->\n";
+                                                                
+                                                                $result = $match['winner_team'] == $match['player_team'] ? 'Win' : 'Loss';
+                                                                $resultClass = $result == 'Win' ? 'text-success' : 'text-danger';
+                                                                $is_alive = $match['survival_time'] === 'Alive' || $match['hp'] > 0;
+                                                                $survival_time = is_numeric($match['survival_time']) ? $match['survival_time'] : 0;
+                                                        ?>
+                                                                <tr data-hp="<?php echo $match['hp']; ?>" 
+                                                                    data-survival-time="<?php echo is_numeric($match['survival_time']) ? $match['survival_time'] : ''; ?>"
+                                                                    data-round-duration="<?php echo $match['round_duration']; ?>">
+                                                                    <td><a href="round.php?id=<?php echo $match['round_id']; ?>" class="text-light">#<?php echo $match['round_id']; ?></a></td>
+                                                                    <td class="<?php echo $resultClass; ?>"><?php echo $result; ?></td>
+                                                                    <td><?php echo number_format($match['total_damage']); ?></td>
+                                                                    <td><?php echo $match['kills']; ?></td>
+                                                                    <td><?php echo $match['assists']; ?></td>
+                                                                    <td><?php echo $is_alive ? 'Alive' : gmdate("i:s", $survival_time); ?></td>
+                                                                    <td><?php echo gmdate("i:s", $match['round_duration']); ?></td>
+                                                                </tr>
+                                                        <?php 
+                                                            endforeach;
+                                                        } else {
+                                                            echo "<!-- No matches found in session or invalid matches data -->\n";
+                                                        }
+                                                        ?>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
                                             </div>
                                         </div>
-                                        
-                                        <div class="collapse" id="<?php echo $sessionId; ?>">
-                                            <div class="session-matches mt-2">
-                                                <table class="table table-dark table-hover">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>Round</th>
-                                                            <th>Result</th>
-                                                            <th>Total Damage</th>
-                                                            <th>Kills</th>
-                                                            <th>Assists</th>
-                                                            <th>Survival Time</th>
-                                                            <th>Round Duration</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                    <?php foreach ($session['matches'] as $match): 
-                                                        $result = $match['winner_team'] == $match['player_team'] ? 'Win' : 'Loss';
-                                                        $resultClass = $result == 'Win' ? 'text-success' : 'text-danger';
-                                                        $is_alive = $match['hp'] > 0;
-                                                    ?>
-                                                        <tr class="<?php echo $is_alive ? 'alive-player hp-underline' : ''; ?>" 
-                                                            data-hp="<?php echo $match['hp']; ?>" 
-                                                            data-survival-percentage="<?php echo ($match['survival_time'] / $match['round_duration']) * 100; ?>">
-                                                            <td><a href="round.php?id=<?php echo $match['round_id']; ?>">#<?php echo $match['round_id']; ?></a></td>
-                                                            <td class="<?php echo $resultClass; ?>"><?php echo $result; ?></td>
-                                                            <td><?php echo number_format($match['total_damage']); ?></td>
-                                                            <td><?php echo $match['kills']; ?></td>
-                                                            <td><?php echo $match['assists']; ?></td>
-                                                            <td><?php echo $is_alive ? 'Alive' : gmdate("i:s", $match['survival_time']); ?></td>
-                                                            <td><?php echo gmdate("i:s", $match['round_duration']); ?></td>
-                                                        </tr>
-                                                    <?php endforeach; ?>
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-4">
+                            <div class="col-12 text-center">
+                                <button id="loadMoreSessions" class="btn btn-outline-light mb-4" data-offset="100">
+                                    More...
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -548,95 +670,214 @@ function getRelativeTime($date) {
         </div>
     </div>
     <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var mmrCtx = document.getElementById('mmrChart').getContext('2d');
-        var mmrData = <?php echo json_encode($mmr_history); ?>;
+    function getRelativeTime(dateString) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const difference = Math.floor((now - date) / 1000); // Convert to seconds
 
-        // Calculate MMR differences
-        var mmrDifferences = mmrData.map((item, index) => {
-            if (index === 0) return 0;
-            return item.MMR - mmrData[index - 1].MMR;
-        });
+        const periods = {
+            31536000: 'year',
+            2592000: 'month',
+            604800: 'week',
+            86400: 'day',
+            3600: 'hour',
+            60: 'minute',
+            1: 'second'
+        };
 
-        var labels = mmrData.map(function(item, index) { return 'Round ' + (index + 1); });
-        var data = mmrData.map(function(item) { return item.MMR; });
+        for (const [seconds, label] of Object.entries(periods)) {
+            const interval = Math.floor(difference / seconds);
+            if (interval >= 1) {
+                return `${interval} ${label}${interval > 1 ? 's' : ''} ago`;
+            }
+        }
+
+        return 'just now';
+    }
+
+    document.getElementById('loadMoreSessions').addEventListener('click', function() {
+        const button = this;
+        const offset = parseInt(button.dataset.offset);
+        const playerId = '<?php echo $player_id; ?>';
         
-        var mmrChart = new Chart(mmrCtx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'MMR',
-                    data: data,
-                    borderColor: 'rgb(75, 192, 192)',
-                    tension: 0.1,
-                    pointRadius: 4,
-                    pointHoverRadius: 8
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: {
-                        ticks: {
-                            autoSkip: true,
-                            maxTicksLimit: 20
-                        }
-                    },
-                    y: {
-                        beginAtZero: false
-                    }
-                },
-                plugins: {
-                    legend: {
-                        display: false
-                    },
-                    title: {
-                        display: true,
-                        text: 'MMR History (Last 100 Matches)',
-                        font: {
-                            size: 16
-                        }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                var index = context.dataIndex;
-                                var mmr = context.raw;
-                                var difference = mmrDifferences[index];
-                                var differenceText = index === 0 ? '' : (difference >= 0 ? ' (+' + difference + ')' : ' (' + difference + ')');
-                                return [
-                                    'MMR: ' + mmr,
-                                    differenceText
-                                ];
-                            },
-                            labelTextColor: function(context) {
-                                var index = context.dataIndex;
-                                if (index === 0) return 'white';
-                                var difference = mmrDifferences[index];
-                                return difference >= 0 ? 'rgb(75, 192, 75)' : 'rgb(255, 99, 132)';
-                            }
+        // Get the timestamp of the last match in the LAST session
+        const allSessions = document.querySelectorAll('.session-container');
+        const lastSession = allSessions[allSessions.length - 1];
+        const lastMatchDate = lastSession.dataset.lastMatchDate;
+        
+        // Get MMR end from the last session's header
+        const originalMmrEnd = lastSession.querySelector('.session-header div:last-child > span').textContent.split('→')[1].split('(')[0].trim();
+        
+        // Show loading state
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
+        
+        fetch(`get_more_sessions.php?player_id=${playerId}&offset=${offset}&last_match_date=${lastMatchDate}&original_mmr_end=${originalMmrEnd}`)
+            .then(response => response.json())
+            .then(data => {
+                console.log('Received data:', data);
+                const sessionsContainer = document.getElementById('sessions-container');
+                
+                if (data.merge_with_last_session) {
+                    // Handle merge case
+                    const lastSessionElement = document.querySelector('.session-container:last-child');
+                    if (lastSessionElement) {
+                        const tableBody = lastSessionElement.querySelector('tbody');
+                        if (tableBody) {
+                            data.matches.forEach(match => {
+                                const result = match.winner_team === match.player_team ? 'Win' : 'Loss';
+                                const resultClass = result === 'Win' ? 'text-success' : 'text-danger';
+                                const isAlive = match.survival_time === 'Alive' || match.hp > 0;
+                                const survivalTime = isAlive ? 'Alive' : new Date(match.survival_time * 1000).toISOString().substr(14, 5);
+                                const roundDuration = new Date(match.round_duration * 1000).toISOString().substr(14, 5);
+                                
+                                const rowHtml = `
+                                    <tr class="${isAlive ? 'alive-player hp-underline' : ''}" 
+                                        data-hp="${match.hp}" 
+                                        data-survival-percentage="${(match.survival_time / match.round_duration) * 100}">
+                                        <td><a href="round.php?id=${match.round_id}" class="text-light">#${match.round_id}</a></td>
+                                        <td class="${resultClass}">${result}</td>
+                                        <td>${Number(match.total_damage).toLocaleString()}</td>
+                                        <td>${match.kills}</td>
+                                        <td>${match.assists}</td>
+                                        <td>${survivalTime}</td>
+                                        <td>${roundDuration}</td>
+                                    </tr>
+                                `;
+                                tableBody.insertAdjacentHTML('beforeend', rowHtml);
+                            });
+                            
+                            // Update session stats
+                            const sessionHeader = lastSessionElement.querySelector('.session-header');
+                            const statsSpan = sessionHeader.querySelector('div:last-child > span');
+                            statsSpan.innerHTML = `MMR: ${data.session_stats.mmr_start} → ${data.session_stats.mmr_end}
+                                <span class="${data.session_stats.mmr_change >= 0 ? 'text-success' : 'text-danger'}">
+                                    (${data.session_stats.mmr_change >= 0 ? '+' : ''}${data.session_stats.mmr_change})
+                                </span>`;
+                            
+                            // Get current number of rows in the table
+                            const currentRowCount = tableBody.querySelectorAll('tr').length;
+                            
+                            // Update rounds count with actual count from table
+                            const roundsSpan = sessionHeader.querySelector('.session-rounds');
+                            roundsSpan.textContent = `${currentRowCount} rounds`;
                         }
                     }
                 }
-            }
-        });
+                
+                // Handle new sessions (check both data.new_sessions and data.sessions)
+                const sessionsToAdd = data.new_sessions || data.sessions || [];
+                if (sessionsToAdd.length > 0) {
+                    sessionsToAdd.forEach(session => {
+                        const mmrChangeClass = session.mmr_change >= 0 ? 'text-success' : 'text-danger';
+                        const mmrChangeSign = session.mmr_change >= 0 ? '+' : '';
+                        const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                        
+                        const sessionHtml = `
+                            <div class="session-container mb-3" data-last-match-date="${session.matches[0].date}">
+                                <div class="session-header d-flex justify-content-between align-items-center p-3 bg-dark rounded" 
+                                     data-bs-toggle="collapse" 
+                                     data-bs-target="#${sessionId}" 
+                                     style="cursor: pointer;">
+                                    <div class="d-flex align-items-center">
+                                        <span class="session-time">${session.relative_time}</span>
+                                        <span class="session-rounds ms-3">${session.matches_count} rounds</span>
+                                    </div>
+                                    <div>
+                                        <span>MMR: ${session.mmr_start} → ${session.mmr_end}
+                                            <span class="${mmrChangeClass}">
+                                                (${mmrChangeSign}${session.mmr_change})
+                                            </span>
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <div class="collapse" id="${sessionId}">
+                                    <div class="session-matches mt-2">
+                                        <table class="table table-dark table-hover">
+                                            <thead>
+                                                <tr>
+                                                    <th>Round</th>
+                                                    <th>Result</th>
+                                                    <th>Total Damage</th>
+                                                    <th>Kills</th>
+                                                    <th>Assists</th>
+                                                    <th>Survival Time</th>
+                                                    <th>Round Duration</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                ${session.matches.map(match => {
+                                                    const result = match.winner_team === match.player_team ? 'Win' : 'Loss';
+                                                    const resultClass = result === 'Win' ? 'text-success' : 'text-danger';
+                                                    const isAlive = match.survival_time === 'Alive' || match.hp > 0;
+                                                    const survivalTime = isAlive ? 'Alive' : new Date(match.survival_time * 1000).toISOString().substr(14, 5);
+                                                    const roundDuration = new Date(match.round_duration * 1000).toISOString().substr(14, 5);
+                                                    
+                                                    return `
+                                                        <tr class="${isAlive ? 'alive-player hp-underline' : ''}" 
+                                                            data-hp="${match.hp}" 
+                                                            data-survival-percentage="${(match.survival_time / match.round_duration) * 100}">
+                                                            <td><a href="round.php?id=${match.round_id}" class="text-light">#${match.round_id}</a></td>
+                                                            <td class="${resultClass}">${result}</td>
+                                                            <td>${Number(match.total_damage).toLocaleString()}</td>
+                                                            <td>${match.kills}</td>
+                                                            <td>${match.assists}</td>
+                                                            <td>${survivalTime}</td>
+                                                            <td>${roundDuration}</td>
+                                                        </tr>
+                                                    `;
+                                                }).join('')}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        sessionsContainer.insertAdjacentHTML('beforeend', sessionHtml);
+                    });
+                }
+                
+                // Update offset for next request
+                button.dataset.offset = data.new_offset;
+                
+                // Hide button if no more data
+                if (!data.has_more) {
+                    button.style.display = 'none';
+                }
+                
+                // Reset button state
+                button.disabled = false;
+                button.innerHTML = 'More...';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                button.disabled = false;
+                button.innerHTML = 'Error loading more sessions. Try again.';
+            });
     });
     </script>
-    <script src="assets/js/bootstrap.bundle.min.js"></script>
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const rows = document.querySelectorAll('.table tbody tr');
-        rows.forEach(row => {
-            const survivalPercentage = parseFloat(row.dataset.survivalPercentage);
-            const hp = parseInt(row.dataset.hp);
-            
-            if (row.classList.contains('alive-player')) {
-                row.style.setProperty('--hp-width', `${hp}%`);
-            } else {
-                row.style.background = `linear-gradient(to right, rgba(220, 53, 69, 0.2) ${survivalPercentage}%, transparent ${survivalPercentage}%)`;
-            }
+        const tables = document.querySelectorAll('.table');
+
+        tables.forEach(table => {
+            const rows = table.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+                const hp = parseInt(row.dataset.hp);
+                const survivalTime = parseInt(row.dataset.survivalTime);
+                const roundDuration = parseInt(row.dataset.roundDuration);
+                
+                if (survivalTime === 0 || isNaN(survivalTime)) {
+                    // For alive players
+                    row.classList.add('alive-player', 'hp-underline');
+                    row.style.setProperty('--hp-width', `${hp}%`);
+                } else {
+                    // For players who didn't survive
+                    const percentage = Math.min(100, (survivalTime / roundDuration) * 100);
+                    row.style.background = `linear-gradient(to right, rgba(220, 53, 69, 0.2) ${percentage}%, transparent ${percentage}%)`;
+                }
+            });
         });
     });
     </script>
